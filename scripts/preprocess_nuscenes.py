@@ -182,11 +182,12 @@ class NuScenesProcess():
                     for ann in annotations
                 ]).reshape(-1)
 
-                names = [
-                    'ignore'
-                    if b.name not in self.mapping else self.mapping[b.name]
-                    for b in boxes
-                ]
+                # names = [
+                #     'ignore'
+                #     if b.name not in self.mapping else self.mapping[b.name]
+                #     for b in boxes
+                # ]
+                names = [b.name for b in boxes]
                 names = np.array(names)
 
                 gt_boxes = np.concatenate([locs, dims, -rots - np.pi / 2],
