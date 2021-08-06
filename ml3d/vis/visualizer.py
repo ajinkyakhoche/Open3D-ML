@@ -38,6 +38,7 @@ class Model:
         # contains the "points" array.
         self.tclouds = {}  # name -> tpointcloud
         self.tcams = {}  # name -> tcams
+        self.poses = {}  # # name -> pose
         self.data_names = []  # the order data will be displayed / animated
         self.bounding_box_data = []  # [BoundingBoxData]
 
@@ -50,8 +51,8 @@ class Model:
     def _init_data(self, name):
         tcloud = o3d.t.geometry.PointCloud(o3d.core.Device("CPU:0"))
         self.tclouds[name] = tcloud
-        tcam = dict()
-        self.tcams[name] = tcam
+        self.tcams[name] = dict()
+        self.poses[name] = np.zeros((3, 1))
         self._data[name] = {}
         self.data_names.append(name)
 
@@ -81,6 +82,10 @@ class Model:
 
         name = data["name"]
         pts = self._convert_to_numpy(data["points"])
+        # pts_temp = pts[:, :3]
+        # pts_temp = np.hstack((pts_temp, np.ones((pts_temp.shape[0], 1))))
+        # pts_temp = np.dot(data['pose'], pts_temp.T).T
+        # pts[:, :3] = pts_temp[:, :3]
         tcloud = o3d.t.geometry.PointCloud(o3d.core.Device("CPU:0"))
         known_attrs = set()
         if pts.shape[1] >= 4:
@@ -101,6 +106,7 @@ class Model:
                 tcam[k] = o3d.t.geometry.Image(
                     Visualizer._make_tcloud_array(img))
         self.tcams[name] = tcam
+        self.poses[name] = data['pose']
 
         # Add scalar attributes and vector3 attributes
         attrs = {}
@@ -176,13 +182,13 @@ class Model:
         attr_max = -1e30
         for name in self._data.keys():
             key = name + ":" + attr_key_base
-            if key not in self._attr2minmax:
-                attr = self.get_attr(name, attr_name)
-                if attr is None:  # clouds may not have all the same attributes
-                    continue
-                if len(attr.shape) > 1:
-                    attr = attr[:, channel]
-                self._attr2minmax[key] = (attr.min(), attr.max())
+            # if key not in self._attr2minmax:  #TODO: check if this if is needed
+            attr = self.get_attr(name, attr_name)
+            if attr is None:  # clouds may not have all the same attributes
+                continue
+            if len(attr.shape) > 1:
+                attr = attr[:, channel]
+            self._attr2minmax[key] = (attr.min(), attr.max())
             amin, amax = self._attr2minmax[key]
             attr_min = min(attr_min, amin)
             attr_max = max(attr_max, amax)
@@ -374,8 +380,8 @@ class DatasetModel(Model):
             tcloud = o3d.t.geometry.PointCloud(o3d.core.Device("CPU:0"))
             self.tclouds[name] = tcloud
             self._data[name] = {}
-
             self.tcams[name] = {}
+            self.poses[name] = {}
 
             bbox_name = Model.bounding_box_prefix + name
             for i in range(0, len(self.bounding_box_data)):
@@ -926,6 +932,14 @@ class Visualizer:
         grid.add_child(gui.Label("Shader"))
         grid.add_child(self._shader)
 
+        self._ref_frame = gui.Combobox()
+        self._ref_frame.add_item("Local")
+        self._ref_frame.add_item("Global")
+        self._ref_frame.selected_index = 0
+        self._ref_frame.set_on_selection_changed(self._on_ref_frame_changed)
+        grid.add_child(gui.Label("Reference Frame"))
+        grid.add_child(self._ref_frame)
+
         properties.add_child(grid)
 
         # ... shader panels
@@ -981,7 +995,8 @@ class Visualizer:
 
         properties.add_fixed(em)
         properties.add_child(self._shader_panels)
-        self._panel.add_child(properties)
+        # self._panel.add_child(properties)
+        list_grid.add_child(properties)
 
         # Populate tree, etc.
         for name in self._objects.data_names:
@@ -998,20 +1013,28 @@ class Visualizer:
         """
         self._attrname2lut[attr_name] = lut
 
-    def setup_camera(self):
+    def setup_camera(self, name=None):
         """Set up camera for visualization."""
-        selected_names = self._get_selected_names()
-        selected_bounds = [
-            self._objects.calc_bounds_for(n) for n in selected_names
-        ]
-        min_val = [1e30, 1e30, 1e30]
-        max_val = [-1e30, -1e30, -1e30]
-        for b in selected_bounds:
-            for i in range(0, 3):
-                min_val[i] = min(min_val[i], b[0][i])
-                max_val[i] = max(max_val[i], b[1][i])
-        bounds = o3d.geometry.AxisAlignedBoundingBox(min_val, max_val)
-        self._3d.setup_camera(60, bounds, bounds.get_center())
+        if name is None:
+            selected_names = self._get_selected_names()
+            selected_bounds = [
+                self._objects.calc_bounds_for(n) for n in selected_names
+            ]
+            min_val = [1e30, 1e30, 1e30]
+            max_val = [-1e30, -1e30, -1e30]
+            for b in selected_bounds:
+                for i in range(0, 3):
+                    min_val[i] = min(min_val[i], b[0][i])
+                    max_val[i] = max(max_val[i], b[1][i])
+            bounds = o3d.geometry.AxisAlignedBoundingBox(min_val, max_val)
+            self._3d.setup_camera(60, bounds, bounds.get_center())
+        else:
+            bound_limit = [[-100, -200, -50], [100, 200, 50]]
+            center = self._objects.poses[name][:3, -1]
+            min_val = bound_limit[0] + center
+            max_val = bound_limit[1] + center
+            bounds = o3d.geometry.AxisAlignedBoundingBox(min_val, max_val)
+            self._3d.setup_camera(60, bounds, bounds.get_center())
 
     def show_geometries_under(self, name, show):
         """Show geometry for a given node."""
@@ -1404,6 +1427,8 @@ class Visualizer:
         idx = int(new_value)
         for i in range(0, len(self._animation_frames)):
             self._3d.scene.show_geometry(self._animation_frames[i], (i == idx))
+        # calculate new camera view
+        # self.setup_camera(name=self._animation_frames[idx])
         for cam in self._objects._dataset.dataset.cam_names:
             self._img[cam].update_image(
                 self._objects.tcams[self._animation_frames[idx]][cam])
@@ -1539,6 +1564,31 @@ class Visualizer:
     def _on_shader_changed(self, name, idx):
         # _shader.current_text is already name, so we need to force an update
         self._set_shader(name, force_update=True)
+
+    def _on_ref_frame_changed(self, name, idx):
+        print("")
+        if self._ref_frame.selected_index == idx:
+            pass
+        # selected_names = self._get_selected_names()
+        # for n in selected_names:
+        for n in self._objects.data_names:
+            # pc = self._objects.tclouds[n].point['points'].numpy()
+            pc = self._objects._data[n]['points'][:, :3]
+            pc_hom = np.hstack((pc, np.ones((pc.shape[0], 1))))
+            tcloud = o3d.t.geometry.PointCloud(o3d.core.Device("CPU:0"))
+
+            if idx == 0:  # name=="Local"
+                pc_hom = np.dot(np.linalg.inv(self._objects.poses[n]),
+                                pc_hom.T).T
+            elif idx == 1:  # name=="Global"
+                pc_hom = np.dot(self._objects.poses[n], pc_hom.T).T
+            # TODO: modify bounding boxes
+            tcloud.point["points"] = Visualizer._make_tcloud_array(
+                pc_hom[:, :3], copy=True)
+            self._objects.tclouds[n] = tcloud
+            self._objects._data[n]['points'][:, :3] = pc_hom[:, :3]
+
+        self._on_done_ui()
 
     def _on_shader_color_changed(self, color):
         self._update_geometry_colors()
@@ -1686,6 +1736,33 @@ class Visualizer:
 
         self._visualize("Open3D", width, height)
 
+    def _on_done_ui(self):
+        # Add bounding boxes here: bounding boxes belonging to the dataset
+        # will not be loaded until now.
+        self._update_bounding_boxes()
+
+        self._update_datasource_combobox()
+        self._update_shaders_combobox()
+
+        # Display "colors" by default if available, "points" if not
+        available_attrs = self._get_available_attrs()
+        self._set_shader(self.SOLID_NAME, force_update=True)
+        if "colors" in available_attrs:
+            self._datasource_combobox.selected_text = "colors"
+        elif "points" in available_attrs:
+            self._datasource_combobox.selected_text = "points"
+
+        self._dont_update_geometry = True
+        self._on_datasource_changed(self._datasource_combobox.selected_text,
+                                    self._datasource_combobox.selected_index)
+        self._update_geometry_colors()
+        self._dont_update_geometry = False
+        # _datasource_combobox was empty, now isn't, re-layout.
+        self.window.set_needs_layout()
+
+        self._update_geometry()
+        self.setup_camera()
+
     def _visualize(self, title, width, height):
         gui.Application.instance.initialize()
         self._init_user_interface(title, width, height)
@@ -1700,33 +1777,5 @@ class Visualizer:
             self._name2treenode[name].checkbox.checked = True
             self._3d.scene.show_geometry(name, True)
 
-        def on_done_ui():
-            # Add bounding boxes here: bounding boxes belonging to the dataset
-            # will not be loaded until now.
-            self._update_bounding_boxes()
-
-            self._update_datasource_combobox()
-            self._update_shaders_combobox()
-
-            # Display "colors" by default if available, "points" if not
-            available_attrs = self._get_available_attrs()
-            self._set_shader(self.SOLID_NAME, force_update=True)
-            if "colors" in available_attrs:
-                self._datasource_combobox.selected_text = "colors"
-            elif "points" in available_attrs:
-                self._datasource_combobox.selected_text = "points"
-
-            self._dont_update_geometry = True
-            self._on_datasource_changed(
-                self._datasource_combobox.selected_text,
-                self._datasource_combobox.selected_index)
-            self._update_geometry_colors()
-            self._dont_update_geometry = False
-            # _datasource_combobox was empty, now isn't, re-layout.
-            self.window.set_needs_layout()
-
-            self._update_geometry()
-            self.setup_camera()
-
-        self._load_geometries(self._objects.data_names, on_done_ui)
+        self._load_geometries(self._objects.data_names, self._on_done_ui)
         gui.Application.instance.run()
