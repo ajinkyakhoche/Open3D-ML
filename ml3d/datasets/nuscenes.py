@@ -248,8 +248,10 @@ class NuSceneSplit():
         calib = {'world_cam': world_cam.T}
 
         pose = np.eye(4)
-        pose[:3, :3] = R.from_quat(info['ego2global_rot']).as_matrix()
-        pose[:3, -1] = info['ego2global_tr']
+        pose_r = R.from_quat(info['ego2global_rot']).as_matrix()
+        pose_t = info['ego2global_tr'] @ pose_r.T
+        pose[:3, :3] = pose_r.T
+        pose[3, :3] = -pose_t
 
         pc = self.dataset.read_lidar(lidar_path)
         label = self.dataset.read_label(info, calib)
