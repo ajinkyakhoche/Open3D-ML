@@ -99,15 +99,6 @@ class Model:
             tcloud.point["points"] = Visualizer._make_tcloud_array(pts)
         self.tclouds[name] = tcloud
 
-        tcam = dict()
-        if 'cam' in data:
-            for k, v in data['cam'].items():
-                img = self._convert_to_numpy(v)
-                tcam[k] = o3d.t.geometry.Image(
-                    Visualizer._make_tcloud_array(img))
-        self.tcams[name] = tcam
-        self.poses[name] = data['pose']
-
         # Add scalar attributes and vector3 attributes
         attrs = {}
         for k, v in data.items():
@@ -128,6 +119,20 @@ class Model:
 
         self._data[name] = attrs
         self._known_attrs[name] = known_attrs
+
+    def create_cams(self, name, cam_dict, key='img', update=False):
+        """Create images based on the data provided.
+
+        The data should include name and cams.
+        """
+        tcam = dict()
+        for k, v in cam_dict.items():
+            img = self._convert_to_numpy(v[key])
+            tcam[k] = o3d.t.geometry.Image(Visualizer._make_tcloud_array(img))
+        self.tcams[name] = tcam
+
+        if update:
+            self._data[name]['cams'] = cam_dict
 
     def _convert_to_numpy(self, ary):
         if isinstance(ary, list):
@@ -338,7 +343,15 @@ class DatasetModel(Model):
             self.bounding_box_data.append(
                 Model.BoundingBoxData(name, data['bounding_boxes']))
 
+            for _, val in data['cams'].items():
+                lidar2img_rt = val['lidar2img_rt']
+                bbox_data = data['bounding_boxes']
+                bbox_3d_img = BoundingBox3D.project_to_img(
+                    bbox_data, np.copy(val['img']), lidar2img_rt)
+                val['bbox_3d'] = bbox_3d_img
+
         self.create_point_cloud(data)
+        self.create_cams(data['name'], data['cams'], update=True)
         size = self._calc_pointcloud_size(self._data[name], self.tclouds[name],
                                           self.tcams[name])
         if size + self._current_memory_usage > self._memory_limit:
@@ -365,7 +378,8 @@ class DatasetModel(Model):
         """Calcute the size of the pointcloud based on the rawdata."""
         pcloud_size = 0
         for (attr, arr) in raw_data.items():
-            pcloud_size += arr.size * 4
+            if not isinstance(arr, dict):
+                pcloud_size += arr.size * 4
         # Point cloud consumes 64 bytes of per point of GPU memory
         pcloud_size += pcloud.point["points"].num_elements() * 64
         # TODO: add memory for point cloud color and semantics
@@ -847,6 +861,15 @@ class Visualizer:
         grid = gui.VGrid(2)
         v.add_child(grid)
 
+        # ... select image mode
+        self._img_mode = gui.Combobox()
+        for item in ["raw", "bbox_3d"]:
+            self._img_mode.add_item(item)
+        self._img_mode.selected_index = 0
+        self._img_mode.set_on_selection_changed(self._on_img_mode_changed)
+        grid.add_child(gui.Label("Image Mode"))
+        grid.add_child(self._img_mode)
+
         self._slider = gui.Slider(gui.Slider.INT)
         self._slider.set_limits(0, len(self._objects.data_names))
         self._slider.set_on_value_changed(self._on_animation_slider_changed)
@@ -995,7 +1018,6 @@ class Visualizer:
 
         properties.add_fixed(em)
         properties.add_child(self._shader_panels)
-        # self._panel.add_child(properties)
         list_grid.add_child(properties)
 
         # Populate tree, etc.
@@ -1472,6 +1494,21 @@ class Visualizer:
     def _on_prev(self):
         self._slider.int_value -= 1
         self._on_animation_slider_changed(self._slider.int_value)
+
+    def _on_img_mode_changed(self, name, idx):
+        if self._img_mode.selected_index == idx:
+            pass
+        if idx == 0:  # or name == 'raw'
+            for n in self._objects.data_names:
+                self._objects.create_cams(n,
+                                          self._objects._data[n]['cams'],
+                                          update=False)
+        elif idx == 1:  # or name == 'bbox_3d'
+            for n in self._objects.data_names:
+                self._objects.create_cams(n,
+                                          self._objects._data[n]['cams'],
+                                          key='bbox_3d',
+                                          update=False)
 
     def _on_bgcolor_changed(self, new_color):
         bg_color = [
