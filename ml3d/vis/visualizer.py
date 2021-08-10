@@ -758,6 +758,7 @@ class Visualizer:
         self._animation_delay_secs = 0.100
         self._consolidate_bounding_boxes = False
         self._dont_update_geometry = False
+        self._prev_ref_frame_idx = 0
 
     def _init_dataset(self, dataset, split, indices):
         self._objects = DatasetModel(dataset, split, indices)
@@ -1603,11 +1604,13 @@ class Visualizer:
         self._set_shader(name, force_update=True)
 
     def _on_ref_frame_changed(self, name, idx):
-        print("")
-        if self._ref_frame.selected_index == idx:
-            pass
-        # selected_names = self._get_selected_names()
-        # for n in selected_names:
+        # print("")
+        if idx == self._prev_ref_frame_idx:
+            return
+        else:
+            self._prev_ref_frame_idx = idx
+        # # selected_names = self._get_selected_names()
+        # # for n in selected_names:
         for n in self._objects.data_names:
             # pc = self._objects.tclouds[n].point['points'].numpy()
             pc = self._objects._data[n]['points'][:, :3]
@@ -1615,10 +1618,9 @@ class Visualizer:
             tcloud = o3d.t.geometry.PointCloud(o3d.core.Device("CPU:0"))
 
             if idx == 0:  # name=="Local"
-                pc_hom = np.dot(np.linalg.inv(self._objects.poses[n]),
-                                pc_hom.T).T
+                pc_hom = pc_hom @ np.linalg.inv(self._objects.poses[n]).T
             elif idx == 1:  # name=="Global"
-                pc_hom = np.dot(self._objects.poses[n], pc_hom.T).T
+                pc_hom = pc_hom @ self._objects._data[n]['pose'].T
             # TODO: modify bounding boxes
             tcloud.point["points"] = Visualizer._make_tcloud_array(
                 pc_hom[:, :3], copy=True)
