@@ -7,7 +7,7 @@ import logging
 import yaml
 from scipy.spatial.transform import Rotation as R
 
-from .base_dataset import BaseDataset
+from .base_dataset import BaseDataset, BaseDatasetSplit
 from ..utils import Config, make_dir, DATASET
 from .utils import BEVBox3D
 
@@ -58,13 +58,8 @@ class NuScenes(BaseDataset):
 
         self.name = cfg.name
         self.dataset_path = cfg.dataset_path
-        # self.num_classes = 10
         self.label_to_names = self.get_label_to_names()
         self.num_classes = len(self.label_to_names)
-        # from nuscenes.nuscenes import NuScenes
-        # nusc = NuScenes(version='v1.0-trainval', dataroot=self.dataset_path, verbose=True)
-        # self.label_to_names = nusc.lidarseg_idx2name_mapping
-        # self.num_classes = len(self.label_to_names)
 
         self.train_info = {}
         self.test_info = {}
@@ -90,19 +85,6 @@ class NuScenes(BaseDataset):
             A dict where keys are label numbers and
             values are the corresponding names.
         """
-        # label_to_names = {
-        #     0: 'ignore',
-        #     1: 'barrier',
-        #     2: 'bicycle',
-        #     3: 'bus',
-        #     4: 'car',
-        #     5: 'construction_vehicle',
-        #     6: 'motorcycle',
-        #     7: 'pedestrian',
-        #     8: 'traffic_cone',
-        #     9: 'trailer',
-        #     10: 'truck'
-        # }
         label_to_names = {
             0: 'noise',
             1: 'animal',
@@ -246,12 +228,14 @@ class NuScenes(BaseDataset):
         pass
 
 
-class NuSceneSplit():
+class NuSceneSplit(BaseDatasetSplit):
 
     def __init__(self, dataset, split='train'):
         self.cfg = dataset.cfg
 
         self.infos = dataset.get_split_list(split)
+
+        super().__init__(dataset, split=split)
         self.path_list = []
         for info in self.infos:
             self.path_list.append(info['lidar_path'])
@@ -275,15 +259,16 @@ class NuSceneSplit():
 
         pc = self.dataset.read_lidar(lidar_path)
         bbox_3d = self.dataset.read_bbox_3d(info, calib)
-        label_3d = self.dataset.read_label_3d(info['lidarseg_path'])
 
         data = {
             'point': pc,
             'feat': None,
             'calib': calib,
             'bounding_boxes': bbox_3d,
-            'labels': label_3d
         }
+
+        if 'lidarseg_path' in info:
+            data['label'] = self.dataset.read_label_3d(info['lidarseg_path'])
 
         return data
 
