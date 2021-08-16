@@ -211,10 +211,17 @@ class NuScenesProcess():
             lidar_path, boxes, _ = nusc.get_sample_data(lidar_token)
 
             lidar_path = os.path.abspath(lidar_path)
+
+            lidarseg_path = os.path.join(
+                self.nusc.dataroot,
+                self.nusc.get('lidarseg', lidar_token)['filename'])
+            lidarseg_path = os.path.abspath(lidarseg_path)
             assert os.path.exists(lidar_path)
+            assert os.path.exists(lidarseg_path)
 
             data = {
                 'lidar_path': lidar_path,
+                'lidarseg_path': lidarseg_path,
                 'token': sample['token'],
                 'cams': dict(),
                 'lidar2ego_tr': calib_rec['translation'],
@@ -264,11 +271,12 @@ class NuScenesProcess():
                     for ann in annotations
                 ]).reshape(-1)
 
-                names = [
-                    'ignore'
-                    if b.name not in self.mapping else self.mapping[b.name]
-                    for b in boxes
-                ]
+                # names = [
+                #     'ignore'
+                #     if b.name not in self.mapping else self.mapping[b.name]
+                #     for b in boxes
+                # ]
+                names = [b.name for b in boxes]
                 names = np.array(names)
 
                 gt_boxes = np.concatenate([locs, dims, -rots - np.pi / 2],

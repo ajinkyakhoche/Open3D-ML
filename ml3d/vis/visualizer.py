@@ -426,9 +426,12 @@ class Visualizer:
 
         def get_colors(self):
             """Returns a list of label keys."""
+            # return [
+            #     self._label2color[label]
+            #     for label in sorted(self._label2color.keys())
+            # ]
             return [
-                self._label2color[label]
-                for label in sorted(self._label2color.keys())
+                self._label2color[label] for label in self._label2color.keys()
             ]
 
         def set_on_changed(self, callback):  # takes no args, no return value
@@ -438,7 +441,8 @@ class Visualizer:
             """Updates the labels based on look-up table passsed."""
             self.widget.clear()
             root = self.widget.get_root_item()
-            for key in sorted(labellut.labels.keys()):
+            # for key in sorted(labellut.labels.keys()):
+            for key in labellut.labels.keys():
                 lbl = labellut.labels[key]
                 color = lbl.color
                 if len(color) == 3:
@@ -1188,7 +1192,7 @@ class Visualizer:
             shape = [len(tcloud.point["points"].numpy())]
             scalar = np.zeros(shape, dtype='float32')
         tcloud.point["__visualization_scalar"] = Visualizer._make_tcloud_array(
-            scalar)
+            scalar.astype(np.float32))
 
         flag |= rendering.Scene.UPDATE_UV0_FLAG
 
@@ -1667,8 +1671,11 @@ class Visualizer:
         """
         # Setup the labels
         lut = LabelLUT()
-        for val in sorted(dataset.label_to_names.values()):
-            lut.add_label(val, val)
+        # for val in sorted(dataset.label_to_names.values()):
+        # lut.add_label(val, val)
+        for key, val in dataset.label_to_names.items():
+            key = str(key)
+            lut.add_label(key, val)
         self.set_lut("labels", lut)
 
         self._consolidate_bounding_boxes = True
