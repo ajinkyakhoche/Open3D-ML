@@ -8,15 +8,20 @@ import argparse
 import pickle
 
 from tqdm import tqdm
-from open3d.ml.datasets import KITTI, utils
+from open3d.ml.datasets import KITTI, NuScenes, Lyft, Argoverse, Waymo, utils
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Collect bounding boxes for augmentation.')
+    parser.add_argument('dataset_name')
     parser.add_argument('--dataset_path',
                         help='path to Dataset root',
                         required=True)
+    parser.add_argument('--info_path',
+                        help='Path to dataset info (pkl files)',
+                        default=None,
+                        required=False)
     parser.add_argument(
         '--out_path',
         help='Output path to store pickle (default to dataet_path)',
@@ -40,7 +45,21 @@ if __name__ == '__main__':
     if out_path is None:
         out_path = args.dataset_path
 
-    dataset = KITTI(args.dataset_path)
+    which = args.dataset_name
+    path = args.dataset_path
+    info_path = args.info_path
+
+    if which == "kitti":
+        dataset = KITTI(path, info_path=info_path)
+    elif which == "nuscenes":
+        dataset = NuScenes(path, info_path=info_path)
+    elif which == "lyft":
+        dataset = Lyft(path, info_path=info_path)
+    elif which == "argoverse":
+        dataset = Argoverse(path, info_path=info_path)
+    elif which == "waymo":
+        dataset = Waymo(path, info_path=info_path)
+
     train = dataset.get_split('train')
 
     bboxes = []
