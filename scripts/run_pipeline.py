@@ -33,7 +33,10 @@ def parse_args():
     parser.add_argument('--split', help='train or test', default='train')
     parser.add_argument('--mode', help='additional mode', default=None)
     parser.add_argument('--max_epochs', help='number of epochs', default=None)
-    parser.add_argument('--batch_size', help='batch size', default=None)
+    parser.add_argument('--batch_size',
+                        help='batch size',
+                        type=int,
+                        default=None)
     parser.add_argument('--main_log_dir',
                         help='the dir to save logs and models')
 
