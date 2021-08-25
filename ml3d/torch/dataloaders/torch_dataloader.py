@@ -62,8 +62,9 @@ class TorchDataloader(Dataset):
                     if name in self.cache_convert.cached_ids:
                         continue
                     data = dataset.get_data(idx)
-                    # cache the data
-                    self.cache_convert(name, data, attr)
+                    if len(data['point'].shape) == 2:
+                        # cache the data
+                        self.cache_convert(name, data, attr)
 
         else:
             self.cache_convert = None

@@ -171,6 +171,8 @@ class ObjectDetection(BasePipeline):
         gt = []
         with torch.no_grad():
             for data in tqdm(valid_loader, desc='validation'):
+                if data.point == []:
+                    continue
                 data.to(device)
                 results = model(data)
                 loss = model.loss(results, data)
@@ -187,6 +189,7 @@ class ObjectDetection(BasePipeline):
         sum_loss = 0
         desc = "validation - "
         for l, v in self.valid_losses.items():
+            v = [i.tolist() for i in v if not isinstance(i.tolist(), list)]
             desc += " %s: %.03f" % (l, np.mean(v))
             sum_loss += np.mean(v)
         desc += " > loss: %.03f" % sum_loss
@@ -291,26 +294,27 @@ class ObjectDetection(BasePipeline):
 
             process_bar = tqdm(train_loader, desc='training')
             for data in process_bar:
-                data.to(device)
-                results = model(data)
-                loss = model.loss(results, data)
-                loss_sum = sum(loss.values())
+                if data.point != []:
+                    data.to(device)
+                    results = model(data)
+                    loss = model.loss(results, data)
+                    loss_sum = sum(loss.values())
 
-                self.optimizer.zero_grad()
-                loss_sum.backward()
-                if model.cfg.get('grad_clip_norm', -1) > 0:
-                    torch.nn.utils.clip_grad_value_(model.parameters(),
-                                                    model.cfg.grad_clip_norm)
-                self.optimizer.step()
-                desc = "training - "
-                for l, v in loss.items():
-                    if not l in self.losses:
-                        self.losses[l] = []
-                    self.losses[l].append(v.cpu().detach().numpy())
-                    desc += " %s: %.03f" % (l, v.cpu().detach().numpy())
-                desc += " > loss: %.03f" % loss_sum.cpu().detach().numpy()
-                process_bar.set_description(desc)
-                process_bar.refresh()
+                    self.optimizer.zero_grad()
+                    loss_sum.backward()
+                    if model.cfg.get('grad_clip_norm', -1) > 0:
+                        torch.nn.utils.clip_grad_value_(
+                            model.parameters(), model.cfg.grad_clip_norm)
+                    self.optimizer.step()
+                    desc = "training - "
+                    for l, v in loss.items():
+                        if not l in self.losses:
+                            self.losses[l] = []
+                        self.losses[l].append(v.cpu().detach().numpy())
+                        desc += " %s: %.03f" % (l, v.cpu().detach().numpy())
+                    desc += " > loss: %.03f" % loss_sum.cpu().detach().numpy()
+                    process_bar.set_description(desc)
+                    process_bar.refresh()
 
             if self.scheduler is not None:
                 self.scheduler.step()
@@ -328,6 +332,10 @@ class ObjectDetection(BasePipeline):
             writer.add_scalar("train/" + key, np.mean(val), epoch)
 
         for key, val in self.valid_losses.items():
+            if isinstance(val, list):
+                val = [
+                    i.tolist() for i in val if not isinstance(i.tolist(), list)
+                ]
             writer.add_scalar("valid/" + key, np.mean(val), epoch)
 
     def load_ckpt(self, ckpt_path=None, is_resume=True):

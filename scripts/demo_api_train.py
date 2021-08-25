@@ -5,6 +5,9 @@ from open3d.ml.torch.models import RandLANet
 from open3d.ml.utils import Config, get_module
 
 import argparse
+from pathlib import Path
+import sys
+import pprint
 
 
 def parse_args():
@@ -27,14 +30,22 @@ def parse_args():
     return args
 
 
-def demo_train(args):
+def demo_train(args, cmd_line):
     # Initialize the training by passing parameters
     dataset = SemanticKITTI(args.path_semantickitti, use_cache=True)
 
     model = RandLANet(dim_input=3)
 
     pipeline = SemanticSegmentation(model=model, dataset=dataset, max_epoch=100)
-
+    with open(Path(__file__).parent / 'README.md', 'r') as f:
+        readme = f.read()
+    pipeline.cfg_tb = {
+        'readme': readme,
+        'cmd_line': cmd_line,
+        'dataset': pprint.pformat(dataset.cfg.cfg_dict, indent=2),
+        'model': pprint.pformat(model.cfg.cfg_dict, indent=2),
+        'pipeline': pprint.pformat(pipeline.cfg.cfg_dict, indent=2)
+    }
     pipeline.run_train()
 
 
@@ -69,6 +80,7 @@ def demo_inference(args):
 
 
 if __name__ == '__main__':
+    cmd_line = ' '.join(sys.argv[:])
     args = parse_args()
-    demo_train(args)
+    demo_train(args, cmd_line)
     demo_inference(args)
