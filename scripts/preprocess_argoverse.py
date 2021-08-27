@@ -83,7 +83,7 @@ class ArgoverseProcess():
     def process_scene(self, scene):
         info = {}
 
-        num_pc = scene.lidar_count
+        num_pc = len(scene.lidar_list)
         lidar_path = scene.lidar_list
 
         info['num_pc'] = num_pc
